@@ -1,0 +1,46 @@
+#version 460
+#include "bindless.glsl"
+#include "common.h"
+#define RESOLUTION 4
+
+layout (local_size_x = 16, local_size_y = 16) in;
+
+layout(std430, buffer_reference, buffer_reference_align = 8) readonly buffer ChunkRef
+{
+    uint width;
+    uint height;
+    uint data[];
+};
+
+PUSH_CONSTANTS(
+    uint image;
+    uint chunk_index;
+    uint chunk_prev_index;
+);
+
+void main()
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 image_size = imageSize(g_images[registers.image]);
+    if (any(greaterThanEqual(coord, image_size))) return;
+
+    ivec2 chunk_coord = coord / RESOLUTION;
+    uint cell = imageLoad(g_images_u32[registers.chunk_index], chunk_coord).r;
+
+    uint previous = imageLoad(g_images_u32[registers.chunk_prev_index], chunk_coord).r;
+    if (displaces(previous, cell)) {
+        cell = previous;
+    }
+
+    uint mat = material(cell);
+    uint var = variant(cell);
+
+    vec3 rgb;
+    if (mat < uint(MAT_COUNT)) {
+        rgb = g_palette[mat * uint(SHADES) + (var & uint(SHADES - 1))];
+    } else {
+        rgb = vec3(1.0, 0.0, 1.0);   // unknown material — loud on purpose
+    }
+
+    imageStore(g_images[registers.image], coord, vec4(rgb, 1.0));
+}

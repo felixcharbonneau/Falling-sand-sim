@@ -1,0 +1,33 @@
+#version 460
+#include "bindless.glsl"
+#include "common.h"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+PUSH_CONSTANTS(
+    uint  chunk;
+    ivec2 brush_pos;
+    int   brush_radius;
+    uint  material;
+    uint frame_index;
+);
+
+void main()
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy) + registers.brush_pos - registers.brush_radius;
+    ivec2 size  = imageSize(g_images_u32[registers.chunk]);
+    if (any(lessThan(coord, ivec2(0))) || any(greaterThanEqual(coord, size))) return;
+
+    if(is_gas(registers.material)) {
+        uint rand = hash_rand(coord, registers.frame_index);
+        if ((rand & 7u) != 0u) return;
+    }
+
+
+    ivec2 d = coord - registers.brush_pos;
+    if (dot(d, d) > registers.brush_radius * registers.brush_radius) return;
+
+    if(registers.material != 0 && imageLoad(g_images_u32[registers.chunk], coord).r != 0) return;
+
+    set_cell(registers.chunk, coord, registers.material, registers.frame_index);
+}

@@ -1,0 +1,17 @@
+#version 460
+#include "bindless.glsl"
+layout (local_size_x = 16, local_size_y = 16) in;
+
+PUSH_CONSTANTS(
+    uint src;
+    uint dst;
+);
+
+void main()
+{
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size  = imageSize(g_images_u32[registers.src]);
+    if (any(greaterThanEqual(coord, size))) return;
+
+    imageStore(g_images_u32[registers.dst], coord, imageLoad(g_images_u32[registers.src], coord));
+}

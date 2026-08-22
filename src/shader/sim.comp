@@ -1,0 +1,116 @@
+#version 460
+#include "bindless.glsl"
+#include "common.h"
+
+layout (local_size_x = 16, local_size_y = 16) in;
+PUSH_CONSTANTS(
+    uint src;
+    uint dst;
+    ivec2 offset;
+    uint frame_index;
+);
+
+uint cell_at(ivec2 c) {
+    ivec2 size = imageSize(g_images_u32[registers.src]);
+    if (any(lessThan(c, ivec2(0))) || any(greaterThanEqual(c, size)))
+        return AIR;
+    return imageLoad(g_images_u32[registers.src], c).r;
+}
+
+void 
+cell_store(ivec2 c, uint v) {
+    ivec2 size = imageSize(g_images_u32[registers.dst]);
+    if (any(lessThan(c, ivec2(0))) || any(greaterThanEqual(c, size))) return;
+    imageStore(g_images_u32[registers.dst], c, uvec4(v, 0, 0, 0));
+}
+
+void main()
+{
+    ivec2 base = ivec2(gl_GlobalInvocationID.xy) * 2 + registers.offset;
+
+    uint tl = cell_at(base + ivec2(0,0));
+    uint tr = cell_at(base + ivec2(1,0));
+    uint bl = cell_at(base + ivec2(0,1));
+    uint br = cell_at(base + ivec2(1,1));
+
+    uint in_tl = tl, in_tr = tr, in_bl = bl, in_br = br;
+
+    bool tl_moves = can_fall(in_tl);
+    bool tr_moves = can_fall(in_tr);
+    bool moved_down = false;
+
+    /// cell down
+    if (tl_moves && displaces(in_tl, in_bl)) { tl = in_bl; bl = in_tl; tl_moves = false; moved_down = true; }
+    if (tr_moves && displaces(in_tr, in_br)) { tr = in_br; br = in_tr; tr_moves = false; moved_down = true; }
+    /// diagonal down
+    if (tr_moves && displaces(in_tr, bl)) { uint t = bl; bl = in_tr; tr = t; tr_moves = false; }
+    if (tl_moves && displaces(in_tl, br)) { uint t = br; br = in_tl; tl = t; tl_moves = false; }
+
+    /// TODO: liquid left/right
+    if(!moved_down && (material(br) == AIR && (is_liquid(bl)) || (material(bl) == AIR && is_liquid(br))))
+    {
+        uint t = br;
+        br = bl;
+        bl = t;
+    }
+    if(!moved_down && (material(tr) == AIR && (is_liquid(tl)) || (material(tl) == AIR && is_liquid(tr))))
+    {
+        uint t = tr;
+        tr = tl;
+        tl = t;
+    }
+
+    if ((material(tl) == WATER || material(tr) == WATER || material(bl) == WATER || material(br) == WATER) && 
+        (material(tl) == LAVA || material(tr) == LAVA || material(bl) == LAVA || material(br) == LAVA))
+    {
+        if(material(tl) == WATER || material(tl) == LAVA) tl = pack(OBSIDIAN, hash_rand(base + ivec2(0,0), registers.frame_index) & 3u);
+        if(material(tr) == WATER || material(tr) == LAVA) tr = pack(OBSIDIAN, hash_rand(base + ivec2(1,0), registers.frame_index) & 3u);
+        if(material(bl) == WATER || material(bl) == LAVA) bl = pack(OBSIDIAN, hash_rand(base + ivec2(0,1), registers.frame_index) & 3u);
+        if(material(br) == WATER || material(br) == LAVA) br = pack(OBSIDIAN, hash_rand(base + ivec2(1,1), registers.frame_index) & 3u);
+
+        if(material(tl) == AIR) tl = pack(SMOKE, hash_rand(base + ivec2(0,0), registers.frame_index) & 3u);
+        if(material(tr) == AIR) tr = pack(SMOKE, hash_rand(base + ivec2(1,0), registers.frame_index) & 3u);
+        if(material(bl) == AIR) bl = pack(SMOKE, hash_rand(base + ivec2(0,1), registers.frame_index) & 3u);
+        if(material(br) == AIR) br = pack(SMOKE, hash_rand(base + ivec2(1,1), registers.frame_index) & 3u);
+    }
+
+    if(is_gas(bl) && displaces(bl, tl))
+    {
+        uint t = tl;
+        tl = bl;
+        bl = t;
+    }
+    if(is_gas(br) && displaces(br, tr))
+    {
+        uint t = tr;
+        tr = br;
+        br = t;
+    }
+
+    if((is_gas(br) && material(bl) == AIR) ||(is_gas(bl) && material(br) == AIR))
+    {
+        uint rand = hash_rand(base + ivec2(0,0), registers.frame_index);
+        if((rand & 3u) == 3u)
+        {
+            uint t = br;
+            br = bl;
+            bl = t;
+        }
+    }
+
+    if((is_gas(tr) && material(tl) == AIR) ||(is_gas(tl) && material(tr) == AIR))
+    {
+        uint rand = hash_rand(base + ivec2(1,1), registers.frame_index);
+        if((rand & 3u) == 3u)
+        {
+            uint t = tr;
+            tr = tl;
+            tl = t;
+        }
+    }
+
+    cell_store(base + ivec2(0,0), tl);
+    cell_store(base + ivec2(1,0), tr);
+    cell_store(base + ivec2(0,1), bl);
+    cell_store(base + ivec2(1,1), br);
+}
