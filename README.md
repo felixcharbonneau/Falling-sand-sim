@@ -25,7 +25,7 @@ This codebase was made to familiarise myself a bit more with vulkan by making so
 * There is a lack of memory management for the vulkan side, this isn't really an issue here since there are so little vulkan objects(around 1 buffer and 3 images), but single allocations per objects wouldn't scale very well in a game engine for example.
 * Water can move diagonally which I think is unusual for these types of simulation, if I where to redo it I would probably make the same set of rules as I did for smoke but with the y index flipped.
 * I made an arena because I thought I would need it, but its basically useless here.
-
+* The syncronisation code is very poor, I have a single barrier that blocks everything between every pipeline call for the images that get written.
 
 ## Ai usage
 Considering the goal was to familiarize myself with vulkan, I only used ai in the simulation for research purposes(proposing algorithms). Although most of the cpu-side code involving video decoding and audio was ai generated, which was around ~100-200 lines.
