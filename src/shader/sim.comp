@@ -109,6 +109,37 @@ void main()
         }
     }
 
+    if((material(tl) == AIR) && (material(tr) == STONE_VIDEO || material(br) == STONE_VIDEO || material(bl) == STONE_VIDEO))
+    {
+        uint rand = hash_rand(base + ivec2(5,5), registers.frame_index);
+        if((rand & 24) == 0){
+            tl = SAND;
+            bl = material_rand(base + ivec2(5,5), SAND, registers.frame_index);
+        }
+    }
+    if((material(tr) == AIR) && (material(tl) == STONE_VIDEO || material(br) == STONE_VIDEO || material(bl) == STONE_VIDEO))
+    {
+        uint rand = hash_rand(base + ivec2(5,3), registers.frame_index);
+        if((rand & 24) == 0){
+            tr = SAND;
+            tr = material_rand(base + ivec2(5,3), SAND, registers.frame_index);
+        }
+    }
+    if((material(bl) == AIR) && (material(tr) == STONE_VIDEO || material(br) == STONE_VIDEO || material(tl) == STONE_VIDEO))
+    {
+        uint rand = hash_rand(base + ivec2(5,4), registers.frame_index);
+        if((rand & 24) == 0){
+            bl = material_rand(base + ivec2(5,4), SAND, registers.frame_index);
+        }
+    }
+    if((material(br) == AIR) && (material(tr) == STONE_VIDEO || material(tl) == STONE_VIDEO || material(bl) == STONE_VIDEO))
+    {
+        uint rand = hash_rand(base + ivec2(5,2), registers.frame_index);
+        if((rand & 24) == 0){
+            br = material_rand(base + ivec2(5,2), SAND, registers.frame_index);
+        }
+    }
+
     cell_store(base + ivec2(0,0), tl);
     cell_store(base + ivec2(1,0), tr);
     cell_store(base + ivec2(0,1), bl);

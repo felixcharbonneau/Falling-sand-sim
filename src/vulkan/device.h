@@ -23,6 +23,8 @@ void cmd_push(CommandBuffer* cmd, Device* device, uint32_t size, void* data);
 void cmd_bind_image_set(CommandBuffer* cmd, Device* device, VkPipelineBindPoint bind_point);
 void cmd_bind_pipeline(CommandBuffer* cmd, Pipeline* pipeline);
 void cmd_dispatch(CommandBuffer* cmd, uint32_t x, uint32_t y, uint32_t z);
+Buffer create_staging_buffer(Device* device, VkDeviceSize size);
+
 
 bool gpu_alloc(Device* device, VkMemoryRequirements reqs, VkMemoryPropertyFlags props, VkDeviceMemory* out_memory);
 

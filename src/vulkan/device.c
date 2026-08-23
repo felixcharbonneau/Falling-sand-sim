@@ -69,6 +69,7 @@ create_device(Instance* instance, DeviceCreateInfo* create_info, Arena* arena, D
         .descriptorBindingStorageImageUpdateAfterBind = VK_TRUE,
         .bufferDeviceAddress                         = VK_TRUE,
         .scalarBlockLayout                           = VK_TRUE,
+        .shaderStorageImageArrayNonUniformIndexing = VK_TRUE
     };
     VkPhysicalDeviceVulkan13Features features13 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
@@ -383,4 +384,27 @@ void
 cmd_dispatch(CommandBuffer* cmd, uint32_t x, uint32_t y, uint32_t z)
 {
     vkCmdDispatch(cmd->buffer, x, y, z);
+}
+
+Buffer
+create_staging_buffer(Device* device, VkDeviceSize size)
+{
+    Buffer b = {0};
+    VkBufferCreateInfo info = {
+        .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size        = size,
+        .usage       = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+    vkCreateBuffer(device->device, &info, NULL, &b.buffer);
+
+    VkMemoryRequirements req;
+    vkGetBufferMemoryRequirements(device->device, b.buffer, &req);
+
+    gpu_alloc(device, req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &b.memory);
+
+    vkBindBufferMemory(device->device, b.buffer, b.memory, 0);
+    vkMapMemory(device->device, b.memory, 0, size, 0, &b.mapped);
+    return b;
 }

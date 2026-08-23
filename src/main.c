@@ -6,6 +6,7 @@
 #include <SDL3/SDL_vulkan.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 #include <vulkan/vulkan_core.h>
 #include "memory/arena.h"
 #include "memory/memory.h"
@@ -15,6 +16,13 @@
 #include "vulkan/pipeline.h"
 #include "vulkan/swapchain.h"
 #include "vulkan/vulkan_types.inl"
+
+
+#define MINIAUDIO_IMPLEMENTATION
+#include "vendor/miniaudio.h"
+
+#define PL_MPEG_IMPLEMENTATION
+#include "vendor/pl_mpeg.h"
 
 char game_memory[MB(256)];
 Arena game_arena;
@@ -32,6 +40,8 @@ struct frame_data {
     Semaphore swapchain_semaphore;
     Fence render_fence;
     Arena frame_arena;
+
+    Buffer video_staging;
 } frames[MAX_FRAMES_IN_FLIGHT];
 
 
@@ -48,7 +58,7 @@ Pipeline copy_pipeline;
 Pipeline draw_pipeline;
 Pipeline circle_brush;
 Pipeline sim_pipeline;
-Pipeline gravity_pass;
+Pipeline video_pipeline;
 
 Image chunk_images[2];
 
@@ -85,11 +95,6 @@ typedef struct CopyPushConstants {
     uint32_t dst_img;
 } CopyPushConstants;
 
-typedef struct GravityPushConstants {
-    uint32_t src_img;
-    uint32_t dst_img;
-} GravityPushConstants;
-
 typedef struct DrawPushConstants
 {
     uint32_t draw_image_index;
@@ -105,6 +110,37 @@ typedef struct CircleBrushPushConstants {
     uint32_t material;      
     uint32_t frame_index;
 } CircleBrushPushConstants;
+
+typedef struct VideoPushConstants
+{
+    uint32_t video_img;
+    uint32_t chunk_img;
+    uint32_t frame_idx;
+} VideoPushConstants;
+
+
+//// Extra code to play bad apple
+bool bad_apple = false;
+ma_engine engine;
+ma_sound bad_apple_sound;
+plm_t*   plm;
+uint8_t  video_luma[CHUNK_WIDTH * CHUNK_HEIGHT];
+bool     video_dirty = false;
+double   video_clock = 0.0;
+Image    video_image;
+
+/// Callback for plm
+static void
+on_video(plm_t* p, plm_frame_t* frame, void* user)
+{
+    for (uint32_t y = 0; y < CHUNK_HEIGHT; y++) {
+        memcpy(video_luma + y * CHUNK_WIDTH,
+               frame->y.data + y * frame->y.width,
+               CHUNK_WIDTH);
+    }
+    
+    video_dirty = true;
+}
 
 void 
 render_frame()
@@ -158,6 +194,31 @@ render_frame()
         cmd_memory_barrier(cmd, &chunk_images[0]);
     }
 
+    if (bad_apple && video_dirty) 
+    {
+        Buffer* stage = &frames[frame_in_flight].video_staging;
+        uint32_t* dst = (uint32_t*)stage->mapped;
+        for (uint32_t i = 0; i < CHUNK_WIDTH * CHUNK_HEIGHT; i++)
+            dst[i] = video_luma[i];
+
+        cmd_transition_image(cmd, &video_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        cmd_copy_buffer_to_image(cmd, stage, &video_image);
+        cmd_transition_image(cmd, &video_image, VK_IMAGE_LAYOUT_GENERAL);
+
+        VideoPushConstants push = {
+            .video_img = video_image.desc_offset,
+            .chunk_img = chunk_images[0].desc_offset,
+            .frame_idx = frame_index
+        };
+        cmd_push(cmd, &device, sizeof(VideoPushConstants), &push);
+        cmd_bind_pipeline(cmd, &video_pipeline);
+        cmd_dispatch(cmd, (CHUNK_WIDTH + 15) / 16, (CHUNK_HEIGHT + 15) / 16, 1);
+        cmd_memory_barrier(cmd, &chunk_images[0]);
+
+        video_dirty = false;
+    }
+
+
     CopyPushConstants copy_push = {
         .src_img = chunk_images[0].desc_offset,
         .dst_img = chunk_images[0 ^ 1].desc_offset,
@@ -167,14 +228,6 @@ render_frame()
     cmd_dispatch(cmd, (WINDOW_WIDTH/2 + 15) / 16, (WINDOW_HEIGHT/2 + 15) / 16, 1);
     cmd_memory_barrier(cmd, &chunk_images[0 ^ 1]);
 
-    GravityPushConstants grav_push = {
-        .src_img = chunk_images[0].desc_offset,
-        .dst_img = chunk_images[0 ^ 1].desc_offset,
-    };
-    cmd_push(cmd, &device, sizeof(GravityPushConstants), &grav_push);
-    cmd_bind_pipeline(cmd, &gravity_pass);
-    cmd_dispatch(cmd, (WINDOW_WIDTH + 15) / 16, (WINDOW_HEIGHT + 15) / 16, 1);
-    cmd_memory_barrier(cmd, &chunk_images[0 ^ 1]);
 
     for (int i = 0; i < 2; i++) {
         CopyPushConstants copy_push = {
@@ -251,15 +304,29 @@ create_pipelines()
     if (!create_compute_pipeline(&device, copy_module, &copy_pipeline)) return;
     vkDestroyShaderModule(device.device, copy_module, NULL);
 
-    VkShaderModule grav_module;
-    if (!load_shader_module("build/shader/gravity.comp.spv", &device, &grav_module)) return;
-    if (!create_compute_pipeline(&device, grav_module, &gravity_pass)) return;
-    vkDestroyShaderModule(device.device, grav_module, NULL);
+    VkShaderModule vid_module;
+    if (!load_shader_module("build/shader/video.comp.spv", &device, &vid_module)) return;
+    if (!create_compute_pipeline(&device, vid_module, &video_pipeline)) return;
+    vkDestroyShaderModule(device.device, vid_module, NULL);
 }
 
 int
-main()
+main(int argc, char *argv[])
 {
+    /// bad apple setting
+    if (argc == 2 && strcmp(argv[1], "-badapple") == 0) {
+        bad_apple = true;
+        if (ma_engine_init(NULL, &engine) != MA_SUCCESS) return 1;
+        if (ma_sound_init_from_file(&engine, "assets/bad_apple.mp3",
+                MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_NO_SPATIALIZATION,
+                NULL, NULL, &bad_apple_sound) != MA_SUCCESS) return 1;
+
+        plm = plm_create_with_filename("assets/bad_apple.mpg");
+        if (!plm) return 1;
+        plm_set_audio_enabled(plm, FALSE);   // audio comes from the mp3
+        plm_set_video_decode_callback(plm, on_video, NULL);
+    }
+
     game_arena = arena_create(sizeof(game_memory), game_memory);
     window = SDL_CreateWindow("falling sand", WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_VULKAN);
     SDL_Event event;
@@ -321,6 +388,10 @@ main()
     );
 
 
+    video_image = create_image(&device, VK_FORMAT_R32_UINT,
+    VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
+    chunk_img_extent, VK_IMAGE_ASPECT_COLOR_BIT);
+
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
         frames[i].cmd = allocate_command_buffer(&device, &(CommandBufferAllocateInfo){COMMAND_BUFFER_ALLOCATE_INFO_DEFAULTS});
@@ -329,10 +400,17 @@ main()
         void* mem = arena_alloc(&game_arena, FRAME_ARENA_SIZE);
         if (!mem) return 1;
         frames[i].frame_arena = arena_create(FRAME_ARENA_SIZE, mem);
+
+        frames[i].video_staging = create_staging_buffer(&device, CHUNK_WIDTH * CHUNK_HEIGHT * sizeof(uint32_t));
     }
 
     create_pipelines();
     next_edit.material = 1;
+
+
+    if (bad_apple) {
+        ma_sound_start(&bad_apple_sound);
+    }
     while (running)
     {
         while(SDL_PollEvent(&event))
@@ -403,6 +481,16 @@ main()
                         next_edit.y = event.motion.y;
                     }
                 } break;
+            }
+        }
+
+        if (bad_apple) {
+            float t;
+            /// Video is linked to the audio time for simplicity
+            ma_sound_get_cursor_in_seconds(&bad_apple_sound, &t); 
+            if (t > video_clock) {
+                plm_decode(plm, t - video_clock);
+                video_clock = t;
             }
         }
 

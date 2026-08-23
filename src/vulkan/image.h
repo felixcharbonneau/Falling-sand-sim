@@ -8,3 +8,4 @@ void cmd_memory_barrier(CommandBuffer* cmd, Image* img);
 
 Image create_image(Device* device, VkFormat format, VkImageUsageFlags usage_flags, VkExtent3D extent, VkImageAspectFlags aspect_flags);
 
+void cmd_copy_buffer_to_image(CommandBuffer* cmd, Buffer* src, Image* dst);

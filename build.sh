@@ -13,4 +13,4 @@ done
 set -e
 SRC=$(find src -name '*.c')
 gcc -std=c11 -g $SRC -I./src -o build/falling_sand \
-    $(pkg-config --cflags --libs sdl3 vulkan)
+    $(pkg-config --cflags --libs sdl3 vulkan) -lm -lpthread -ldl

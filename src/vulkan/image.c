@@ -143,3 +143,14 @@ create_image(Device* device, VkFormat format, VkImageUsageFlags usage_flags, VkE
     }
     return out_img;
 }
+
+void
+cmd_copy_buffer_to_image(CommandBuffer* cmd, Buffer* src, Image* dst)
+{
+    VkBufferImageCopy region = {
+        .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+        .imageExtent      = dst->extent,
+    };
+    vkCmdCopyBufferToImage(cmd->buffer, src->buffer, dst->image,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+}

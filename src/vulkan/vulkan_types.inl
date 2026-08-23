@@ -103,6 +103,12 @@ typedef struct Pipeline {
 } Pipeline;
 
 
+typedef struct Buffer {
+    VkBuffer       buffer;
+    VkDeviceMemory memory;
+    void*          mapped;
+} Buffer;
+
 
 #define IMAGE_SUBRESOURCE_RANGE_DEFAULTS \
     .baseMipLevel = 0, .levelCount = VK_REMAINING_MIP_LEVELS, \

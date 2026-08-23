@@ -8,8 +8,11 @@
 #define OBSIDIAN  4u
 #define LAVA      5u
 #define SMOKE     6u
-#define MAT_COUNT 7
+#define STONE_VIDEO 7u
+
+#define MAT_COUNT 8
 #define SHADES    4
+
 
 const vec3 g_palette[MAT_COUNT * SHADES] = vec3[](
     // air (flat)
@@ -25,7 +28,9 @@ const vec3 g_palette[MAT_COUNT * SHADES] = vec3[](
     // lava
     vec3(1.00,0.72,0.20), vec3(1.00,0.45,0.08), vec3(0.92,0.28,0.04), vec3(0.70,0.15,0.02),
     // smoke — wider range, lightest shades pale enough to read as wisps
-    vec3(0.84,0.84,0.86), vec3(0.68,0.68,0.71), vec3(0.48,0.48,0.51), vec3(0.30,0.30,0.33)
+    vec3(0.84,0.84,0.86), vec3(0.68,0.68,0.71), vec3(0.48,0.48,0.51), vec3(0.30,0.30,0.33),
+    // video material, simple solution to have a separate "temporary material" that gets deleted on new frames.
+    vec3(0.10,0.06,0.14), vec3(0.07,0.04,0.11), vec3(0.05,0.02,0.09), vec3(0.03,0.01,0.06)
 );
 
 uint material(uint c) { return c & 0xFFu; }
@@ -85,4 +90,15 @@ set_cell(uint chunk, ivec2 coord, uint mat, uint frame_index)
     }
     imageStore(g_images_u32[chunk], coord, uvec4(cell, 0, 0, 0));
 }
+
+uint 
+material_rand(ivec2 coord, uint mat, uint frame_index)
+{
+    uint cell = 0u;
+    if (mat != AIR) {
+        cell = pack(mat, hash_rand(coord, frame_index) & 3u);
+    }
+    return cell;
+}
+
 #endif
