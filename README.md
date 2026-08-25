@@ -8,6 +8,8 @@ Builds on gcc and clang, but not MSVC(due to VLA usage), depends on SDL3 and the
 Running with -badapple flag
 ![Image of the simulation](images/bad_apple_sand_sim.png)
 
+## Demo
+https://www.youtube.com/watch?v=aCD0BIKHDRU
 ## Interesting Algorithms and Techniques I learned
 * I used the [Margolus neighborhood](https://en.wikipedia.org/wiki/Block_cellular_automaton) to avoid the usage of atomics and to be able to do everything in one pass. This means that any interaction can only involve at most 3 neighbours, which limits obsidian in this project to thin lines.
 * I used the [pcg hash](https://en.wikipedia.org/wiki/Permuted_congruential_generator) with the pixel coordinates and frame index in order to generate random numbers on the gpu, which is used for texture variation. The obsidian in the bad apple version doesn't use the frame index in order for the texture to be deterministic and constant accross frames.
